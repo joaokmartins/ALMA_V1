@@ -1,0 +1,47 @@
+# Ignorar ambientes virtuais
+venv/
+env/
+.env/
+
+# Ignorar arquivos de cache do Python
+__pycache__/
+*.py[cod]
+
+# Ignorar pacotes instalados localmente (caso exista)
+*.egg-info/
+.dist/
+
+# Ignorar checkpoints de notebooks Jupyter
+.ipynb_checkpoints/
+
+# Ignorar configurações específicas da IDE
+.vscode/
+.idea/
+
+# Ignorar arquivos de log e arquivos temporários
+*.log
+*.tmp
+
+# Ignorar modelos treinados grandes ou checkpoints, se não forem necessários
+*.pth
+*.pt
+
+# Ignorar arquivos de dados grandes (treinamento/validação), se necessário
+data/
+datasets/
+
+# Ignorar arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar arquivos compactados e outros temporários
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+*.gz
+*.bz2
+
+# Ignorar outros arquivos locais produzidos pelo sistema operacional
+*.swp    # Arquivo de swap (Linux/Vim)
