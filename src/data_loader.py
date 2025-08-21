@@ -1,67 +1,73 @@
-import re
+import tiktoken
+import torch
+from torch.utils.data import Dataset, DataLoader
 
-# Carregar o arquivo de texto do local onde foi salvo
-with open("data/the-verdict.txt", "r", encoding="utf-8") as f: 
-    # <--- IMPORTANTE: Ler da pasta 'data'
+tokenizer = tiktoken.get_encoding("gpt2")
+
+with open("data/the-verdict.txt", "r", encoding="utf-8") as f:
     raw_text = f.read()
-print("Total number of character:", len(raw_text)) 
-print(raw_text[:99])
 
-preprocessed = re.split(r'([,.:;?_!"()\']|--|\s+)', raw_text)
-preprocessed = [item.strip() for item in preprocessed if item.strip()]
-print(len(preprocessed))
+enc_text = tokenizer.encode(raw_text)
+print(len(enc_text))
 
-print(preprocessed[:30])   
+enc_sample = enc_text[50:]
 
-all_words = sorted(set(preprocessed))
-vocab_size = len(all_words)
-print(vocab_size)
+context_size = 4 #1
+x = enc_sample[:context_size]
+y = enc_sample[1:context_size+1]
+print(f"x: {x}")
+print(f"y:      {y}")
 
-print(all_words)
+for i in range(1, context_size+1):
+    context = enc_sample[:i]
+    desired = enc_sample[i]
+    print(context, "---->", desired)
 
-vocab = {token:integer for integer,token in enumerate(all_words)}
-for i, item in enumerate(vocab.items()):
-    print(item)
-    if i >= 50:
-        break    
+for i in range(1, context_size+1):
+    context = enc_sample[:i]
+    desired = enc_sample[i]
+    print(tokenizer.decode(context), "---->", tokenizer.decode([desired]))
 
-all_tokens = sorted(list(set(preprocessed)))
-all_tokens.extend(["<|endoftext|>", "<|unk|>"])
-vocab = {token:integer for integer,token in enumerate(all_tokens)}
+class GPTDatasetV1(Dataset):
+    def __init__(self, txt, tokenizer, max_length, stride):
+        self.input_ids = []
+        self.target_ids = []
 
-print(len(vocab.items()))
+        token_ids = tokenizer.encode(txt) #1
 
-for i, item in enumerate(list(vocab.items())[-5:]):
-    print(item) 
+        for i in range(0, len(token_ids) - max_length, stride): #2
+            input_chunk = token_ids[i:i + max_length]
+            target_chunk = token_ids[i + 1: i + max_length + 1]
+            self.input_ids.append(torch.tensor(input_chunk))
+            self.target_ids.append(torch.tensor(target_chunk))
 
-class SimpleTokenizerV2:
-    def __init__(self, vocab):
-        self.str_to_int = vocab
-        self.int_to_str = { i:s for s,i in vocab.items()}
+    def __len__(self): #3
+        return len(self.input_ids)
+        
+    def __getitem__(self, idx): #4
+        return self.input_ids[idx], self.target_ids[idx]
+        
+def create_dataloader_v1(txt, batch_size=4, max_length=256,
+                        stride=128, shuffle=True, drop_last=True,
+                        num_workers=0):
+    tokenizer = tiktoken.get_encoding("gpt2") #1
+    dataset = GPTDatasetV1(txt, tokenizer, max_length, stride) #2
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        drop_last=drop_last, #3
+        num_workers=num_workers #4
+    )                                  
+    return dataloader            
+        
+with open("data/the-verdict.txt", "r", encoding="utf-8") as f:
+    raw_text = f.read()
 
-    def encode(self, text):
-        preprocessed = re.split(r'([,.:;?_!"()\']|--|\s)', text)
-        preprocessed = [
-            item.strip() for item in preprocessed if item.strip()
-        ]
-        preprocessed = [item if item in self.str_to_int             #1
-                        else "<|unk|>" for item in preprocessed]
-      
-        ids = [self.str_to_int[s] for s in preprocessed]
-        return ids
-   
-    def decode(self, ids):
-        text = " ".join([self.int_to_str[i] for i in ids])
-
-        text = re.sub(r'\s+([,.:;?!"()\'])', r'\1', text)
-        return text
-
-text1 = "Hello, do you like tea?"
-text2 = "In the sunlit terraces of the palace."
-text = " <|endoftext|> ".join((text1, text2))
-print(text)
-
-tokenizer = SimpleTokenizerV2(vocab)
-print(tokenizer.encode(text))
-
-print(tokenizer.decode(tokenizer.encode(text)))
+dataloader = create_dataloader_v1(
+    raw_text, batch_size=8, max_length=4, stride=4, shuffle=False) 
+data_iter = iter(dataloader) #1
+inputs, targets = next(data_iter)
+print("Inputs:\n", inputs)
+print("Targets:\n", targets)
+ 
