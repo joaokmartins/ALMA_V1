@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+
 inputs = torch.tensor(
     [[0.43, 0.15, 0.89], # Your (x^1)
     [0.55, 0.87, 0.66], # journey (x^2)
@@ -94,7 +96,6 @@ print(attn_weights_2)
 context_vec_2 = attn_weights_2 @ values
 print(context_vec_2)
 
-import torch.nn as nn
 class SelfAttention_v1(nn.Module):
     def __init__(self, d_in, d_out):
         super().__init__()
