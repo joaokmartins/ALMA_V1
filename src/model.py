@@ -138,7 +138,7 @@ class SelfAttention_v2(nn.Module):
 
 torch.manual_seed(789)
 sa_v2 = SelfAttention_v2(d_in, d_out)
-print(sa_v2(inputs)) 
+print(sa_v2(inputs))
 
 queries = sa_v2.W_query(inputs)
 keys = sa_v2.W_key(inputs)
@@ -147,7 +147,7 @@ attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
 print("\nPesos de atenção não mascarados:")
 print(attn_weights)
 
-context_length = attn_scores.shape[1]
+context_length = attn_scores.shape[0]
 mask_simple = torch.tril(torch.ones(context_length, context_length)) # Cria uma máscara triangular inferior [46]
 print("\nMáscara simples (torch.tril):")
 print(mask_simple)
@@ -160,4 +160,64 @@ row_sums = masked_simple.sum(dim=-1, keepdim=True)
 masked_simple_norm = masked_simple / row_sums # Renormaliza as linhas [48]
 print("\nPesos de atenção com máscara simples (renormalizados):")
 print(masked_simple_norm)
+
+mask = torch.triu(torch.ones(context_length, context_length), diagonal=1)
+masked = attn_scores.masked_fill(mask.bool(), -torch.inf)
+print("\nScores de atenção com valores mascarados (infinito negativo):")
+print(masked)
+
+attn_weights = torch.softmax(masked / keys.shape[-1]**0.5, dim=1)
+print("\nPesos de atenção causal renormalizados via softmax:")
+print(attn_weights)
+
+torch.manual_seed(123)
+dropout = torch.nn.Dropout(0.5) #1
+example = torch.ones(6, 6) #2
+print("\nExemplo de aplicação de Dropout (50%):")
+print(dropout(example))
+
+torch.manual_seed(123)
+print("\nAplicando Dropout aos pesos de atenção causais:")
+print(dropout(attn_weights))
+
+print("\nCriação de um batch duplicando as entradas:")
+batch = torch.stack((inputs, inputs), dim=0)
+print(batch.shape) #1
+
+class CausalAttention(nn.Module):
+    def __init__(self, d_in, d_out, context_length,
+            dropout, qkv_bias=False):
+        super().__init__()
+        self.d_out = d_out
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.dropout = nn.Dropout(dropout) #1
+        self.register_buffer(
+        'mask',
+        torch.triu(torch.ones(context_length, context_length),
+        diagonal=1)
+        ) #2
+    def forward(self, x):
+        b, num_tokens, d_in = x.shape #3
+        keys = self.W_key(x)
+        queries = self.W_query(x)
+        values = self.W_value(x)
+
+        attn_scores = queries @ keys.transpose(1, 2)
+        attn_scores.masked_fill_( #4
+            self.mask.bool()[:num_tokens, :num_tokens], -torch.inf)
+        attn_weights = torch.softmax(
+            attn_scores / keys.shape[-1]**0.5, dim=-1
+        )
+        attn_weights = self.dropout(attn_weights)
+
+        context_vec = attn_weights @ values
+        return context_vec
+
+torch.manual_seed(123)
+context_length = batch.shape[1]
+ca = CausalAttention(d_in, d_out, context_length, 0.0)
+context_vecs = ca(batch)
+print("context_vecs.shape:", context_vecs.shape)
 
