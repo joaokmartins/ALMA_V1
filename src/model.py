@@ -144,7 +144,7 @@ queries = sa_v2.W_query(inputs)
 keys = sa_v2.W_key(inputs)
 attn_scores = queries @ keys.T
 attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
-print("\nPesos de atenção não mascarados:")
+# Pesos de atenção não mascarados:
 print(attn_weights)
 
 context_length = attn_scores.shape[0]
@@ -153,34 +153,34 @@ print("\nMáscara simples (torch.tril):")
 print(mask_simple)
 
 masked_simple = attn_weights * mask_simple # Aplica a máscara [47]
-print("\nPesos de atenção com máscara simples (não renormalizados):")
+# Pesos de atenção com máscara simples (não renormalizados):
 print(masked_simple)
 
 row_sums = masked_simple.sum(dim=-1, keepdim=True)
 masked_simple_norm = masked_simple / row_sums # Renormaliza as linhas [48]
-print("\nPesos de atenção com máscara simples (renormalizados):")
+# Pesos de atenção com máscara simples (renormalizados):"
 print(masked_simple_norm)
 
 mask = torch.triu(torch.ones(context_length, context_length), diagonal=1)
 masked = attn_scores.masked_fill(mask.bool(), -torch.inf)
-print("\nScores de atenção com valores mascarados (infinito negativo):")
+# Scores de atenção com valores mascarados (infinito negativo): 
 print(masked)
 
 attn_weights = torch.softmax(masked / keys.shape[-1]**0.5, dim=1)
-print("\nPesos de atenção causal renormalizados via softmax:")
+# Pesos de atenção causal renormalizados via softmax:"
 print(attn_weights)
 
 torch.manual_seed(123)
 dropout = torch.nn.Dropout(0.5) #1
 example = torch.ones(6, 6) #2
-print("\nExemplo de aplicação de Dropout (50%):")
+# Exemplo de aplicação de Dropout (50%):"
 print(dropout(example))
 
 torch.manual_seed(123)
-print("\nAplicando Dropout aos pesos de atenção causais:")
+# Aplicando Dropout aos pesos de atenção causais:"
 print(dropout(attn_weights))
 
-print("\nCriação de um batch duplicando as entradas:")
+# Criação de um batch duplicando as entradas:"
 batch = torch.stack((inputs, inputs), dim=0)
 print(batch.shape) #1
 
@@ -221,3 +221,105 @@ ca = CausalAttention(d_in, d_out, context_length, 0.0)
 context_vecs = ca(batch)
 print("context_vecs.shape:", context_vecs.shape)
 
+class MultiHeadAttentionWrapper(nn.Module):
+    def __init__(self, d_in, d_out, context_length,
+                dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        self.heads = nn.ModuleList(
+            [CausalAttention(
+                d_in, d_out, context_length, dropout, qkv_bias
+            )
+            for _ in range(num_heads)]
+        )
+    def forward(self, x):
+        return torch.cat([head(x) for head in self.heads], dim=-1)
+    
+torch.manual_seed(123)
+context_length = batch.shape[1] # This is the number of tokens
+d_in, d_out = 3, 2
+mha = MultiHeadAttentionWrapper(
+    d_in, d_out, context_length, 0.0, num_heads=2
+)
+context_vecs = mha(batch)
+
+print(context_vecs)
+print("context_vecs.shape:", context_vecs.shape)
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_in, d_out,
+                context_length, dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        assert (d_out % num_heads == 0), \
+            "d_out must be divisible by num_heads"
+        self.d_out = d_out
+        self.num_heads = num_heads
+        self.head_dim = d_out // num_heads #1
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.out_proj = nn.Linear(d_out, d_out) #2
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer(
+            "mask",
+            torch.triu(torch.ones(context_length, context_length),
+                       diagonal=1)
+        )
+
+    def forward(self, x):
+        b, num_tokens, d_in = x.shape
+        keys = self.W_key(x) #3
+        queries = self.W_query(x) #3
+        values = self.W_value(x) #3
+
+        keys = keys.view(b, num_tokens, self.num_heads, self.head_dim) #4
+        values = values.view(b, num_tokens, self.num_heads, self.head_dim)
+        queries = queries.view(
+            b, num_tokens, self.num_heads, self.head_dim
+        )
+
+        keys = keys.transpose(1, 2) #5
+        queries = queries.transpose(1, 2) #5
+        values = values.transpose(1, 2) #5
+
+        attn_scores = queries @ keys.transpose(2, 3) #6
+        mask_bool = self.mask.bool()[:num_tokens, :num_tokens] #7
+
+        attn_scores.masked_fill_(mask_bool, -torch.inf) #8
+
+        attn_weights = torch.softmax(
+            attn_scores / keys.shape[-1]**0.5, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+
+        context_vec = (attn_weights @ values).transpose(1, 2) #9
+#10
+        context_vec = context_vec.contiguous().view(
+        b, num_tokens, self.d_out
+        )
+        context_vec = self.out_proj(context_vec) #11
+        return context_vec
+    
+a = torch.tensor([[[[0.2745, 0.6584, 0.2775, 0.8573], #1
+                    [0.8993, 0.0390, 0.9268, 0.7388],
+                    [0.7179, 0.7058, 0.9156, 0.4340]],
+
+                    [[0.0772, 0.3565, 0.1479, 0.5331],
+                    [0.4066, 0.2318, 0.4545, 0.9737],
+                    [0.4606, 0.5159, 0.4220, 0.5786]]]])
+
+print(a @ a.transpose(2, 3))
+
+first_head = a[0, 0, :, :]
+first_res = first_head @ first_head.T
+print("First head:\n", first_res)
+
+second_head = a[0, 1, :, :]
+second_res = second_head @ second_head.T
+print("\nSecond head:\\n", second_res)
+
+torch.manual_seed(123)
+batch_size, context_length, d_in = batch.shape
+d_out = 2
+mha = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vecs = mha(batch)
+print(context_vecs)
+print("context_vecs.shape:", context_vecs.shape)
