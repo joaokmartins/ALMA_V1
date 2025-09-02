@@ -10,7 +10,7 @@ inputs = torch.tensor(
     [0.05, 0.80, 0.55]] # step (x^6)
 )
 
-query = inputs[1]                       #1
+query = inputs[1]                       
 attn_scores_2 = torch.empty(inputs.shape[0])    
 for i, x_i in enumerate(inputs):
     attn_scores_2[i] = torch.dot(x_i, query)
@@ -36,7 +36,7 @@ attn_weights_2 = torch.softmax(attn_scores_2, dim=0)
 print("Attention weights:", attn_weights_2)
 print("Sum:", attn_weights_2.sum())
 
-query = inputs[1] #1
+query = inputs[1] 
 context_vec_2 = torch.zeros(query.shape)
 for i,x_i in enumerate(inputs):
     context_vec_2 += attn_weights_2[i]*x_i
@@ -63,9 +63,9 @@ print(all_context_vecs)
 
 print("Previous 2nd context vector:", context_vec_2)   
 
-x_2 = inputs[1] #1
-d_in = inputs.shape[1] #2
-d_out = 2 #3
+x_2 = inputs[1] 
+d_in = inputs.shape[1] 
+d_out = 2 
 
 torch.manual_seed(123)
 W_query = torch.nn.Parameter(torch.rand(d_in, d_out), requires_grad=False)
@@ -82,11 +82,11 @@ values = inputs @ W_value
 print("keys.shape:", keys.shape)
 print("values.shape:", values.shape)
 
-keys_2 = keys[1] #1
+keys_2 = keys[1] 
 attn_score_22 = query_2.dot(keys_2)
 print(attn_score_22)
 
-attn_scores_2 = query_2 @ keys.T #1
+attn_scores_2 = query_2 @ keys.T 
 print(attn_scores_2)
 
 d_k = keys.shape[-1]
@@ -148,16 +148,17 @@ attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
 print(attn_weights)
 
 context_length = attn_scores.shape[0]
-mask_simple = torch.tril(torch.ones(context_length, context_length)) # Cria uma máscara triangular inferior [46]
+# Cria uma máscara triangular inferior 
+mask_simple = torch.tril(torch.ones(context_length, context_length)) 
 print("\nMáscara simples (torch.tril):")
 print(mask_simple)
 
-masked_simple = attn_weights * mask_simple # Aplica a máscara [47]
+masked_simple = attn_weights * mask_simple # Aplica a máscara 
 # Pesos de atenção com máscara simples (não renormalizados):
 print(masked_simple)
 
 row_sums = masked_simple.sum(dim=-1, keepdim=True)
-masked_simple_norm = masked_simple / row_sums # Renormaliza as linhas [48]
+masked_simple_norm = masked_simple / row_sums # Renormaliza as linhas 
 # Pesos de atenção com máscara simples (renormalizados):"
 print(masked_simple_norm)
 
@@ -171,8 +172,8 @@ attn_weights = torch.softmax(masked / keys.shape[-1]**0.5, dim=1)
 print(attn_weights)
 
 torch.manual_seed(123)
-dropout = torch.nn.Dropout(0.5) #1
-example = torch.ones(6, 6) #2
+dropout = torch.nn.Dropout(0.5) 
+example = torch.ones(6, 6) 
 # Exemplo de aplicação de Dropout (50%):"
 print(dropout(example))
 
@@ -185,6 +186,7 @@ batch = torch.stack((inputs, inputs), dim=0)
 print(batch.shape) #1
 
 class CausalAttention(nn.Module):
+    # Atenção causal com dropout para LLMs. 
     def __init__(self, d_in, d_out, context_length,
             dropout, qkv_bias=False):
         super().__init__()
@@ -192,20 +194,21 @@ class CausalAttention(nn.Module):
         self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
-        self.dropout = nn.Dropout(dropout) #1
+        self.dropout = nn.Dropout(dropout) 
         self.register_buffer(
         'mask',
         torch.triu(torch.ones(context_length, context_length),
         diagonal=1)
-        ) #2
+        ) 
+    # Registra máscara causal, bloqueia informação futura 
     def forward(self, x):
-        b, num_tokens, d_in = x.shape #3
+        b, num_tokens, d_in = x.shape  # Extrai dimensões: lote, tokens, entrada
         keys = self.W_key(x)
         queries = self.W_query(x)
         values = self.W_value(x)
 
         attn_scores = queries @ keys.transpose(1, 2)
-        attn_scores.masked_fill_( #4
+        attn_scores.masked_fill_( # Aplica máscara causal para ocultar futuros tokens
             self.mask.bool()[:num_tokens, :num_tokens], -torch.inf)
         attn_weights = torch.softmax(
             attn_scores / keys.shape[-1]**0.5, dim=-1
@@ -215,12 +218,14 @@ class CausalAttention(nn.Module):
         context_vec = attn_weights @ values
         return context_vec
 
+# Configura e executa atenção causal para tokens em lote.
 torch.manual_seed(123)
 context_length = batch.shape[1]
 ca = CausalAttention(d_in, d_out, context_length, 0.0)
 context_vecs = ca(batch)
 print("context_vecs.shape:", context_vecs.shape)
 
+# Inicia orquestração de múltiplas atenções causais em paralelo
 class MultiHeadAttentionWrapper(nn.Module):
     def __init__(self, d_in, d_out, context_length,
                 dropout, num_heads, qkv_bias=False):
@@ -234,8 +239,10 @@ class MultiHeadAttentionWrapper(nn.Module):
     def forward(self, x):
         return torch.cat([head(x) for head in self.heads], dim=-1)
     
+# Instancia e executa atenção multi-cabeça causal, 
+# processando entrada em paralelo.
 torch.manual_seed(123)
-context_length = batch.shape[1] # This is the number of tokens
+context_length = batch.shape[1] 
 d_in, d_out = 3, 2
 mha = MultiHeadAttentionWrapper(
     d_in, d_out, context_length, 0.0, num_heads=2
@@ -245,6 +252,7 @@ context_vecs = mha(batch)
 print(context_vecs)
 print("context_vecs.shape:", context_vecs.shape)
 
+ # Multi-cabeça causal eficiente: divide e processa projeções internamente.
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_in, d_out,
                 context_length, dropout, num_heads, qkv_bias=False):
@@ -253,69 +261,73 @@ class MultiHeadAttention(nn.Module):
             "d_out must be divisible by num_heads"
         self.d_out = d_out
         self.num_heads = num_heads
-        self.head_dim = d_out // num_heads #1
+        self.head_dim = d_out // num_heads 
         self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
-        self.out_proj = nn.Linear(d_out, d_out) #2
+        self.out_proj = nn.Linear(d_out, d_out) 
         self.dropout = nn.Dropout(dropout)
         self.register_buffer(
             "mask",
             torch.triu(torch.ones(context_length, context_length),
                        diagonal=1)
         )
-
+    # A função forward processa a entrada para gerar vetores de contexto 
+    # eficientes via atenção causal multi-cabeça
     def forward(self, x):
         b, num_tokens, d_in = x.shape
-        keys = self.W_key(x) #3
-        queries = self.W_query(x) #3
-        values = self.W_value(x) #3
+        keys = self.W_key(x) 
+        queries = self.W_query(x) 
+        values = self.W_value(x) 
 
-        keys = keys.view(b, num_tokens, self.num_heads, self.head_dim) #4
+        keys = keys.view(b, num_tokens, self.num_heads, self.head_dim) 
         values = values.view(b, num_tokens, self.num_heads, self.head_dim)
         queries = queries.view(
             b, num_tokens, self.num_heads, self.head_dim
         )
 
-        keys = keys.transpose(1, 2) #5
-        queries = queries.transpose(1, 2) #5
-        values = values.transpose(1, 2) #5
+        keys = keys.transpose(1, 2) 
+        queries = queries.transpose(1, 2) 
+        values = values.transpose(1, 2) 
+        attn_scores = queries @ keys.transpose(2, 3) 
+        mask_bool = self.mask.bool()[:num_tokens, :num_tokens] 
 
-        attn_scores = queries @ keys.transpose(2, 3) #6
-        mask_bool = self.mask.bool()[:num_tokens, :num_tokens] #7
-
-        attn_scores.masked_fill_(mask_bool, -torch.inf) #8
+        attn_scores.masked_fill_(mask_bool, -torch.inf) 
 
         attn_weights = torch.softmax(
             attn_scores / keys.shape[-1]**0.5, dim=-1)
         attn_weights = self.dropout(attn_weights)
 
-        context_vec = (attn_weights @ values).transpose(1, 2) #9
-#10
+        context_vec = (attn_weights @ values).transpose(1, 2) 
+
         context_vec = context_vec.contiguous().view(
         b, num_tokens, self.d_out
         )
-        context_vec = self.out_proj(context_vec) #11
+        context_vec = self.out_proj(context_vec) 
         return context_vec
-    
-a = torch.tensor([[[[0.2745, 0.6584, 0.2775, 0.8573], #1
+# Exemplo de tensor com formato (batch_size, num_heads, num_tokens, head_dim) = (1, 2, 3, 4).
+a = torch.tensor([[[[0.2745, 0.6584, 0.2775, 0.8573], 
                     [0.8993, 0.0390, 0.9268, 0.7388],
                     [0.7179, 0.7058, 0.9156, 0.4340]],
 
                     [[0.0772, 0.3565, 0.1479, 0.5331],
                     [0.4066, 0.2318, 0.4545, 0.9737],
                     [0.4606, 0.5159, 0.4220, 0.5786]]]])
-
+# Multiplicação de matrizes em lote calcula scores de atenção multi-cabeça.
 print(a @ a.transpose(2, 3))
 
+# Calcula os scores de atenção para a primeira 'cabeça' individualmente. 
 first_head = a[0, 0, :, :]
 first_res = first_head @ first_head.T
 print("First head:\n", first_res)
 
+# Calcula os scores de atenção para a segunda 'cabeça' individualmente.  
 second_head = a[0, 1, :, :]
 second_res = second_head @ second_head.T
 print("\nSecond head:\\n", second_res)
 
+# Inicializa e usa a classe MultiHeadAttention eficiente, 
+# controlando a dimensão de saída do vetor de contexto de 'cabeças' combinado. 
 torch.manual_seed(123)
 batch_size, context_length, d_in = batch.shape
 d_out = 2
