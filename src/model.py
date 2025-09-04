@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import tiktoken 
 
 inputs = torch.tensor(
     [[0.43, 0.15, 0.89], # Your (x^1)
@@ -373,7 +374,7 @@ class DummyGPTModel(nn.Module):
         )
         x = tok_embeds + pos_embeds
         x = self.drop_emb(x)
-        x = self.trf_blocks(x)
+        x = self.trf_blocks(x)  
         x = self.final_norm(x)
         logits = self.out_head(x)
         return logits
@@ -395,3 +396,54 @@ class DummyLayerNorm(nn.Module):
     # Retorna a entrada inalterada, sem normalização.
     def forward(self, x):
         return x
+
+# Inicializa o **tokenizador GPT-2**, codifica textos em IDs e os empilha em um lote.
+tokenizer = tiktoken.get_encoding("gpt2")
+batch = []
+txt1 = "Every effort moves you"
+txt2 = "Every day holds a"
+
+batch.append(torch.tensor(tokenizer.encode(txt1)))
+batch.append(torch.tensor(tokenizer.encode(txt2)))
+batch = torch.stack(batch, dim=0)
+print(batch)
+
+# Configura o modelo GPT-2, processa o lote de tokens e gera os logits de saída.
+torch.manual_seed(123)
+model = DummyGPTModel(GPT_CONFIG_124M)
+logits = model(batch)
+print("Output shape:", logits.shape)
+print(logits)
+
+# Cria tensor de exemplo, aplica camada linear e ReLU, produzindo as saídas.
+torch.manual_seed(123)
+batch_example = torch.randn(2, 5) #1
+layer = nn.Sequential(nn.Linear(5, 6), nn.ReLU())
+out = layer(batch_example)
+print(out)
+
+# Implementa a **normalização de camada**, ajustando a média para 0 
+# e a variância para 1 [1].
+# Utiliza parâmetros aprendíveis (`scale`, `shift`) para otimização e `eps` 
+# para estabilidade numérica [2, 3].
+class LayerNorm(nn.Module):
+    def __init__(self, emb_dim):
+        super().__init__()
+        self.eps = 1e-5
+        self.scale = nn.Parameter(torch.ones(emb_dim))
+        self.shift = nn.Parameter(torch.zeros(emb_dim))
+
+    def forward(self, x):
+        mean = x.mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, keepdim=True, unbiased=False)
+        norm_x = (x - mean) / torch.sqrt(var + self.eps)
+        return self.scale * norm_x + self.shift
+
+# Aplica **normalização de camada** e verifica que a média é 0 e a variância é 1.
+ln = LayerNorm(emb_dim=5)
+out_ln = ln(batch_example)
+mean = out_ln.mean(dim=-1, keepdim=True)
+var = out_ln.var(dim=-1, unbiased=False, keepdim=True)
+torch.set_printoptions(sci_mode=False)
+print("Mean:\n", mean)
+print("Variance:\n", var)
