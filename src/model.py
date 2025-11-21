@@ -688,3 +688,24 @@ print("Output length:", len(out[0]))
 #Usando o método .decode do tokenizador, podemos converter os IDs de volta em texto
 decoded_text = tokenizer.decode(out.squeeze(0).tolist())
 print(decoded_text)
+
+#Funções utilitárias para conversão de texto em ID de token
+def text_to_token_ids(text, tokenizer):
+    encoded = tokenizer.encode(text, allowed_special={'<|endoftext|>'})
+    encoded_tensor = torch.tensor(encoded).unsqueeze(0) #1
+    return encoded_tensor
+
+def token_ids_to_text(token_ids, tokenizer):
+    flat = token_ids.squeeze(0) #2
+    return tokenizer.decode(flat.tolist())
+
+start_context = "Qual é geralmente a cor da maça?"
+tokenizer = tiktoken.get_encoding("gpt2")
+
+token_ids = generate_text_simple(
+    model=model,
+    idx=text_to_token_ids(start_context, tokenizer),
+    max_new_tokens=10,
+    context_size=GPT_CONFIG_124M["context_length"]
+)
+print("Output text:\n", token_ids_to_text(token_ids, tokenizer))
