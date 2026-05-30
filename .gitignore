@@ -45,3 +45,4 @@ Thumbs.db
 
 # Ignorar outros arquivos locais produzidos pelo sistema operacional
 *.swp    # Arquivo de swap (Linux/Vim)
+hostinger_key

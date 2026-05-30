@@ -64,7 +64,7 @@ print(all_context_vecs)
 
 print("Previous 2nd context vector:", context_vec_2)   
 
-x_2 = inputs[1] 
+x_2 = inputs[1]     
 d_in = inputs.shape[1] 
 d_out = 2 
 
